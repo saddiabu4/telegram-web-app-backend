@@ -9,7 +9,7 @@ const rateLimit = require("express-rate-limit")
 
 const authRoutes = require("./routes/authRoutes")
 const productRoutes = require("./routes/productRoutes")
-const telegramBot = require("../bot/telegramBot")
+const telegramBot = require("./bot/telegramBot")
 
 const app = express()
 
