@@ -4,8 +4,7 @@ const Product = require("../models/Product")
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 // Web App URL - bu yerga deploy qilingan URL yoziladi
-const WEBAPP_URL =
-	process.env.WEBAPP_URL || "https://telegram-web-app-frontend.vercel.app"
+const WEBAPP_URL = process.env.WEBAPP_URL || "http://localhost:5173"
 
 // ================= START COMMAND =================
 bot.command("start", async (ctx) => {
