@@ -1,37 +1,46 @@
 const express = require("express")
 const router = express.Router()
 const Product = require("../models/Product")
-const multer = require("multer")
 const path = require("path")
-const fs = require("fs")
 const auth = require("../middleware/authMiddleware")
 
-// ================= MULTER SETUP =================
-const storage = multer.diskStorage({
-	destination: (req, file, cb) => {
-		const uploadPath = "uploads/"
-		if (!fs.existsSync(uploadPath)) {
-			fs.mkdirSync(uploadPath)
-		}
-		cb(null, uploadPath)
-	},
-	filename: (req, file, cb) => {
-		cb(null, Date.now() + path.extname(file.originalname))
-	},
-})
+// Cloudinary yoki local storage
+let upload
+if (process.env.CLOUDINARY_CLOUD_NAME) {
+	// Cloudinary ishlatish (production uchun)
+	const { upload: cloudinaryUpload } = require("../config/cloudinary")
+	upload = cloudinaryUpload
+} else {
+	// Local storage (development uchun)
+	const multer = require("multer")
+	const fs = require("fs")
+	
+	const storage = multer.diskStorage({
+		destination: (req, file, cb) => {
+			const uploadPath = "uploads/"
+			if (!fs.existsSync(uploadPath)) {
+				fs.mkdirSync(uploadPath)
+			}
+			cb(null, uploadPath)
+		},
+		filename: (req, file, cb) => {
+			cb(null, Date.now() + path.extname(file.originalname))
+		},
+	})
 
-const upload = multer({
-	storage,
-	limits: { fileSize: 5 * 1024 * 1024 },
-	fileFilter: (req, file, cb) => {
-		const allowedTypes = /jpeg|jpg|png|webp/
-		const ext = allowedTypes.test(path.extname(file.originalname).toLowerCase())
-		const mime = allowedTypes.test(file.mimetype)
+	upload = multer({
+		storage,
+		limits: { fileSize: 5 * 1024 * 1024 },
+		fileFilter: (req, file, cb) => {
+			const allowedTypes = /jpeg|jpg|png|webp/
+			const ext = allowedTypes.test(path.extname(file.originalname).toLowerCase())
+			const mime = allowedTypes.test(file.mimetype)
 
-		if (ext && mime) cb(null, true)
-		else cb(new Error("Only images are allowed"))
-	},
-})
+			if (ext && mime) cb(null, true)
+			else cb(new Error("Only images are allowed"))
+		},
+	})
+}
 
 // ================= GET ALL =================
 router.get("/", async (req, res) => {
@@ -62,11 +71,17 @@ router.post("/", auth, upload.single("image"), async (req, res) => {
 		if (!name || !price)
 			return res.status(400).json({ message: "Name and price required" })
 
+		// Cloudinary path yoki local filename
+		let imagePath = null
+		if (req.file) {
+			imagePath = req.file.path || req.file.filename
+		}
+
 		const product = new Product({
 			name,
 			description,
 			price,
-			image: req.file ? req.file.filename : null,
+			image: imagePath,
 		})
 
 		await product.save()
@@ -83,11 +98,19 @@ router.put("/:id", auth, upload.single("image"), async (req, res) => {
 		if (!product) return res.status(404).json({ message: "Product not found" })
 
 		if (req.file) {
-			if (product.image) {
-				const oldPath = `uploads/${product.image}`
-				if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+			// Eski rasmni o'chirish (faqat Cloudinary uchun)
+			if (product.image && process.env.CLOUDINARY_CLOUD_NAME) {
+				const { cloudinary } = require("../config/cloudinary")
+				// Cloudinary public_id olish
+				const publicId = product.image.split("/").slice(-2).join("/").split(".")[0]
+				try {
+					await cloudinary.uploader.destroy(publicId)
+				} catch (err) {
+					console.error("Cloudinary delete error:", err.message)
+				}
 			}
-			product.image = req.file.filename
+			// Yangi rasm
+			product.image = req.file.path || req.file.filename
 		}
 
 		product.name = req.body.name || product.name
@@ -107,9 +130,15 @@ router.delete("/:id", auth, async (req, res) => {
 		const product = await Product.findById(req.params.id)
 		if (!product) return res.status(404).json({ message: "Product not found" })
 
-		if (product.image) {
-			const imagePath = `uploads/${product.image}`
-			if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath)
+		// Rasmni o'chirish
+		if (product.image && process.env.CLOUDINARY_CLOUD_NAME) {
+			const { cloudinary } = require("../config/cloudinary")
+			const publicId = product.image.split("/").slice(-2).join("/").split(".")[0]
+			try {
+				await cloudinary.uploader.destroy(publicId)
+			} catch (err) {
+				console.error("Cloudinary delete error:", err.message)
+			}
 		}
 
 		await Product.findByIdAndDelete(req.params.id)

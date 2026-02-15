@@ -4,7 +4,13 @@ const Product = require("../models/Product")
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
 // Web App URL - bu yerga deploy qilingan URL yoziladi
-const WEBAPP_URL = process.env.WEBAPP_URL
+// Oxiridagi slash-ni olib tashlaymiz
+const WEBAPP_URL = (process.env.WEBAPP_URL || "").replace(/\/+$/, "")
+// Backend API URL - rasmlar uchun
+const API_URL = (process.env.API_URL || "http://localhost:5000").replace(
+	/\/+$/,
+	""
+)
 
 // ================= START COMMAND =================
 bot.command("start", async (ctx) => {
@@ -61,18 +67,34 @@ bot.command("products", async (ctx) => {
 				`💰 <b>Narxi:</b> $${product.price}`
 
 			if (product.image) {
-				await ctx.replyWithPhoto(
-					{
-						url: `${process.env.WEBAPP_URL}/uploads/${product.image}`,
-					},
-					{
-						caption,
-						parse_mode: "HTML",
-						...Markup.inlineKeyboard([
-							[Markup.button.webApp("🛒 Xarid qilish", `${WEBAPP_URL}/shop`)],
-						]),
-					}
-				)
+				// Cloudinary URL to'g'ridan-to'g'ri ishlatamiz, aks holda API_URL dan
+				const imageUrl = product.image.startsWith("http") 
+					? product.image 
+					: `${API_URL}/uploads/${product.image}`
+				try {
+					await ctx.replyWithPhoto(
+						{ url: imageUrl },
+						{
+							caption,
+							parse_mode: "HTML",
+							...Markup.inlineKeyboard([
+								[Markup.button.webApp("🛒 Xarid qilish", `${WEBAPP_URL}/shop`)],
+							]),
+						}
+					)
+				} catch (imgError) {
+					console.error("Image send error:", imgError.message, "URL:", imageUrl)
+					// Rasm yuborilmasa, faqat text yuboramiz
+					await ctx.reply(
+						`📷 <i>(Rasm mavjud emas)</i>\n\n` + caption,
+						{
+							parse_mode: "HTML",
+							...Markup.inlineKeyboard([
+								[Markup.button.webApp("🛒 Xarid qilish", `${WEBAPP_URL}/shop`)],
+							]),
+						}
+					)
+				}
 			} else {
 				await ctx.reply(caption, {
 					parse_mode: "HTML",
@@ -96,7 +118,7 @@ bot.command("help", async (ctx) => {
 			`🔸 /shop - Mini App do'konni ochish\n` +
 			`🔸 /products - Mahsulotlar ro'yxati\n` +
 			`🔸 /help - Yordam\n\n` +
-			`📞 <b>Aloqa:</b> @admin_username\n` +
+			`📞 <b>Aloqa:</b> @saddi_abu\n` +
 			`📧 <b>Email:</b> support@cosmetic.shop`,
 		{ parse_mode: "HTML" }
 	)
@@ -141,7 +163,7 @@ bot.action("help", async (ctx) => {
 			`🔸 /start - Botni ishga tushirish\n` +
 			`🔸 /shop - Mini App do'konni ochish\n` +
 			`🔸 /products - Mahsulotlar ro'yxati\n\n` +
-			`📞 <b>Aloqa:</b> @admin_username`,
+			`📞 <b>Aloqa:</b> @saddi_abu`,
 		{
 			parse_mode: "HTML",
 			...Markup.inlineKeyboard([
